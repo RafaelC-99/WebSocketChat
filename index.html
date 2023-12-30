@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Room</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        #chat-output {
+            flex-grow: 1;
+            overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        #message-template-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+        }
+
+        #message-input {
+            flex-grow: 1;
+            padding: 10px;
+        }
+
+        #leave-button, #enter-button {
+            width: 120px;
+            height: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div id="chat-output"></div>
+    <div id="message-template-bottom">
+        <input type="text" id="message-input" placeholder="Type a message and press Enter">
+        <input type="button" id="leave-button" value="Leave chat" >
+        <input type="button" id="enter-button" value="Enter chat">
+    </div>
+    
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const chatOutput = document.getElementById('chat-output');
+            const messageInput = document.getElementById('message-input');
+            const leaveButton = document.getElementById('leave-button');
+            const enterButton = document.getElementById('enter-button');
+            const username = prompt('Enter your username:');
+
+            const ws = new WebSocket('ws://localhost:8080/');
+
+            ws.onopen = function (event) {
+                console.log('WebSocket connection opened:', event);
+
+                // Notify others when a user enters the chat
+                const enterMessage = {
+                    type: 'system',
+                    text: `${username} has entered the chat.`,
+                };
+                ws.send(JSON.stringify(enterMessage));
+            };
+
+            ws.onclose = function (event) {
+                console.log('WebSocket connection closed:', event);
+                if (event.wasClean) {
+                    console.log('Connection closed cleanly.');
+                } else {
+                    console.error('Connection abruptly closed.');
+                }
+            };
+
+            ws.onmessage = function (event) {
+                console.log('Received message:', event.data);
+                try {
+                    rawMessage = event.data;
+                    const jsonPart = rawMessage.replace(/.*?:\s/, ''); // Remove the header part
+                    console.log('JSON part:', jsonPart);
+
+                    const parsedData = JSON.parse(jsonPart);
+                    console.log('Parsed data:', parsedData);
+
+                    handleParsedData(parsedData);
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                }
+            };
+
+            window.addEventListener('beforeunload', function () {
+                if(ws.readyState == ws.OPEN){
+                    const leaveMessage = {
+                        type: 'system',
+                        text: `${username} has left the chat.`,
+                    };
+                    ws.send(JSON.stringify(leaveMessage));
+                }
+                
+            });
+
+
+            function handleParsedData(parsedData) {
+                const messageElement = document.createElement('div');
+
+                if (parsedData.type === 'system') {
+                    messageElement.innerHTML = `<em>${parsedData.text}</em>`;
+                } else if (parsedData.type === 'chat') {
+                    if (parsedData.sender !== username) {
+                        // Display the message on the right for the current user
+                        messageElement.innerHTML = `<div style="text-align: right;"><strong>${parsedData.sender}:</strong> ${parsedData.text}</div>`;
+                    } else {
+                        // Display messages from others on the left
+                        messageElement.innerHTML = `<div style="text-align: left;"><strong>You:</strong> ${parsedData.text}</div>`;
+                    }
+                } else {
+                    messageElement.innerHTML = `<strong>Unknown:</strong> ${parsedData.text}`;
+                }
+
+                chatOutput.appendChild(messageElement);
+
+                chatOutput.scrollTop = chatOutput.scrollHeight;
+            }
+
+            function sendMessage() {
+                const messageText = messageInput.value.trim();
+                if (messageText !== '') {
+                    const message = {
+                        type: 'chat',
+                        sender: username,
+                        text: messageText,
+                    };
+
+                    ws.send(JSON.stringify(message));
+
+                    messageInput.value = '';
+                }
+            }
+
+            function closeMessage(){
+                const messageElement = document.createElement('div');
+                messageElement.innerHTML = `<em>You have left the chat</em>`;
+
+                chatOutput.appendChild(messageElement);
+                chatOutput.scrollTop = chatOutput.scrollHeight;
+            }
+
+            messageInput.addEventListener('keyup', function (event) {
+                if (event.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+
+            leaveButton.addEventListener('click',function(event){
+                if(ws.readyState === ws.OPEN){
+                    const leaveMessage = {
+                        type: 'system',
+                        text: `${username} has left the chat.`,
+                    };
+
+                    ws.send(JSON.stringify(leaveMessage));
+                    ws.close();
+
+                    closeMessage();
+                }else
+                {
+                    console.log("connection is alredy closed");
+                }
+                
+            });
+
+            enterButton.addEventListener('click',function(event){
+            });
+        });
+
+
+    </script>
+</body>
+</html>
